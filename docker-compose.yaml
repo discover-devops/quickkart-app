@@ -1,0 +1,80 @@
+x-db-env: &db-env
+  DB_HOST: postgres
+  DB_PORT: "5432"
+  DB_NAME: quickkart
+  DB_USER: quickkart
+  DB_PASSWORD: quickkart
+  ENVIRONMENT: local
+
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: quickkart
+      POSTGRES_USER: quickkart
+      POSTGRES_PASSWORD: quickkart
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U quickkart -d quickkart"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  product-migrate:
+    build: ./product-service
+    command: ["python", "-m", "app.migrate"]
+    environment: *db-env
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  user-migrate:
+    build: ./user-service
+    command: ["python", "-m", "app.migrate"]
+    environment: *db-env
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  order-migrate:
+    build: ./order-service
+    command: ["python", "-m", "app.migrate"]
+    environment: *db-env
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  product-service:
+    build: ./product-service
+    environment: *db-env
+    ports:
+      - "8001:8000"
+    depends_on:
+      product-migrate:
+        condition: service_completed_successfully
+
+  user-service:
+    build: ./user-service
+    environment: *db-env
+    ports:
+      - "8002:8000"
+    depends_on:
+      user-migrate:
+        condition: service_completed_successfully
+
+  order-service:
+    build: ./order-service
+    environment:
+      <<: *db-env
+      PRODUCT_SERVICE_URL: http://product-service:8000
+      USER_SERVICE_URL: http://user-service:8000
+    ports:
+      - "8003:8000"
+    depends_on:
+      order-migrate:
+        condition: service_completed_successfully
+      product-service:
+        condition: service_started
+      user-service:
+        condition: service_started
